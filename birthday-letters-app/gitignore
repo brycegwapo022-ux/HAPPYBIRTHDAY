@@ -1,0 +1,16 @@
+# Don't share your actual saved letters or photos on GitHub —
+# only the code itself should be public.
+data/letters.db
+data/uploads/*
+!data/uploads/.gitkeep
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs
+*.log
+
+# In case you ever add npm packages later
+node_modules/

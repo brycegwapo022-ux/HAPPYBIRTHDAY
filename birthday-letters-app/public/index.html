@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Letter Folder 💌</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="desk">
+  <div class="board-header">
+    <div class="washi"></div>
+    <h1>The Letter Folder</h1>
+    <p class="subtitle">a growing little archive of birthday love, one letter at a time</p>
+  </div>
+
+  <div class="toolbar">
+    <button id="newLetterBtn" type="button">+ Write a new letter</button>
+    <span id="countLabel"></span>
+  </div>
+
+  <div id="loadingState">opening the folder…</div>
+  <div id="errorState" hidden>couldn't reach the server — is it running?</div>
+  <div id="emptyState" hidden>
+    <span class="big">Your folder is empty</span>
+    it's waiting for its first letter — go on, write one 💌
+  </div>
+  <div id="lettersGrid" class="grid"></div>
+</div>
+
+<footer class="note">made with 💌 — saved to a real database on the server</footer>
+
+<!-- Compose modal -->
+<div class="overlay" id="composeOverlay" hidden>
+  <form class="paper-form" id="composeForm">
+    <button type="button" class="close-btn" id="closeCompose">&times;</button>
+    <h2>Write a new letter</h2>
+
+    <label>To / Title
+      <input type="text" id="titleInput" required placeholder="e.g. Happy Birthday, Mom!">
+    </label>
+
+    <label>From
+      <input type="text" id="fromInput" placeholder="e.g. your loving daughter">
+    </label>
+
+    <label>Date
+      <input type="date" id="dateInput">
+    </label>
+
+    <label>Your message
+      <textarea id="messageInput" rows="7" required placeholder="Dear ..."></textarea>
+    </label>
+
+    <label>Attach a photo (optional)
+      <input type="file" id="photoInput" accept="image/*">
+    </label>
+    <div id="photoPreviewWrap" hidden>
+      <img id="photoPreview" alt="Selected photo preview">
+      <br>
+      <button type="button" id="removePhoto">Remove photo</button>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" id="saveBtn">Seal &amp; Save 💌</button>
+    </div>
+    <p class="error" id="formError" hidden></p>
+  </form>
+</div>
+
+<!-- View modal -->
+<div class="overlay" id="viewOverlay" hidden>
+  <div class="paper-view" id="paperView">
+    <button type="button" class="close-btn" id="closeView">&times;</button>
+    <div id="viewContent"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
