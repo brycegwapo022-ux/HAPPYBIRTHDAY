@@ -1,0 +1,18 @@
+# Don't share your actual saved letters on GitHub —
+# only the code itself should be public. (This only matters for local
+# testing now — your real, permanent data lives in Turso, not this file.)
+data/letters.db
+
+# npm packages (installed fresh by Render/your computer from package.json)
+node_modules/
+
+# environment secrets — NEVER commit your Turso credentials
+.env
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs
+*.log

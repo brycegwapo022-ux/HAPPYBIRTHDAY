@@ -1,11 +1,10 @@
 // server.js — the backend
 // A plain Node.js HTTP server (no framework) exposing a small REST API,
-// backed by a real SQLite database (see db.js), plus static file serving
-// for the frontend in /public and uploaded photos in /data/uploads.
+// backed by a real database (see db.js) that lives in the cloud via Turso,
+// so it survives restarts — plus static file serving for the frontend.
 
 import { createServer } from 'node:http';
-import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
@@ -16,10 +15,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const UPLOADS_DIR = path.join(__dirname, 'data', 'uploads');
 const PORT = process.env.PORT || 3000;
-
-await mkdir(UPLOADS_DIR, { recursive: true });
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -54,33 +50,8 @@ async function readJSONBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-// Saves a base64 data URL (e.g. "data:image/jpeg;base64,...") to disk and
-// returns the public path to serve it from.
-async function savePhoto(id, dataUrl) {
-  const match = /^data:(image\/\w+);base64,(.+)$/.exec(dataUrl || '');
-  if (!match) return null;
-  const ext = match[1] === 'image/png' ? '.png' : '.jpg';
-  const filename = id + ext;
-  const buffer = Buffer.from(match[2], 'base64');
-  await writeFile(path.join(UPLOADS_DIR, filename), buffer);
-  return '/uploads/' + filename;
-}
-
-async function deletePhotoFile(photoPath) {
-  if (!photoPath) return;
-  const filePath = path.join(UPLOADS_DIR, path.basename(photoPath));
-  if (existsSync(filePath)) {
-    try { await unlink(filePath); } catch { /* ignore */ }
-  }
-}
-
 async function serveStatic(req, res, urlPath) {
-  let filePath;
-  if (urlPath.startsWith('/uploads/')) {
-    filePath = path.join(UPLOADS_DIR, path.basename(urlPath));
-  } else {
-    filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
-  }
+  const filePath = path.join(PUBLIC_DIR, urlPath === '/' ? 'index.html' : urlPath);
   try {
     const data = await readFile(filePath);
     const ext = path.extname(filePath).toLowerCase();
@@ -95,12 +66,12 @@ const server = createServer(async (req, res) => {
   const { pathname } = url;
 
   try {
-    // ---------- REST API ----------
+    // ---------- letters ----------
     if (pathname === '/api/letters' && req.method === 'GET') {
       // ?folder=none -> only unfiled letters, ?folder=<id> -> only that folder,
       // no param -> every letter regardless of folder
       const folderFilter = url.searchParams.get('folder') || undefined;
-      return sendJSON(res, 200, listLetters(folderFilter));
+      return sendJSON(res, 200, await listLetters(folderFilter));
     }
 
     if (pathname === '/api/letters' && req.method === 'POST') {
@@ -110,35 +81,46 @@ const server = createServer(async (req, res) => {
       if (!title || !message) {
         return sendJSON(res, 400, { error: 'Title and message are required.' });
       }
-      let folderId = body.folderId || null;
-      if (folderId && !getFolder(folderId)) {
+      const folderId = body.folderId || null;
+      if (folderId && !(await getFolder(folderId))) {
         return sendJSON(res, 400, { error: 'That folder does not exist.' });
       }
-      const id = crypto.randomUUID();
-      const photoPath = body.photo ? await savePhoto(id, body.photo) : null;
-      const letter = insertLetter({
-        id,
+      const letter = await insertLetter({
+        id: crypto.randomUUID(),
         title,
         from: (body.from || '').trim(),
         date: body.date || '',
         message,
-        photoPath,
+        photo: body.photo || null, // stored directly as a data URL, straight in the database
         folderId,
         createdAt: Date.now(),
       });
       return sendJSON(res, 201, letter);
     }
 
+    const singleMatch = pathname.match(/^\/api\/letters\/([\w-]+)$/);
+    if (singleMatch && req.method === 'GET') {
+      const letter = await getLetter(singleMatch[1]);
+      if (!letter) return sendJSON(res, 404, { error: 'Letter not found.' });
+      return sendJSON(res, 200, letter);
+    }
+
+    if (singleMatch && req.method === 'DELETE') {
+      const removed = await deleteLetter(singleMatch[1]);
+      if (!removed) return sendJSON(res, 404, { error: 'Letter not found.' });
+      return sendJSON(res, 200, { ok: true });
+    }
+
     // ---------- folders ----------
     if (pathname === '/api/folders' && req.method === 'GET') {
-      return sendJSON(res, 200, listFolders());
+      return sendJSON(res, 200, await listFolders());
     }
 
     if (pathname === '/api/folders' && req.method === 'POST') {
       const body = await readJSONBody(req);
       const name = (body.name || '').trim();
       if (!name) return sendJSON(res, 400, { error: 'Folder name is required.' });
-      const folder = insertFolder({
+      const folder = await insertFolder({
         id: crypto.randomUUID(),
         name,
         color: body.color || null,
@@ -149,22 +131,8 @@ const server = createServer(async (req, res) => {
 
     const folderMatch = pathname.match(/^\/api\/folders\/([\w-]+)$/);
     if (folderMatch && req.method === 'DELETE') {
-      const removed = deleteFolder(folderMatch[1]);
+      const removed = await deleteFolder(folderMatch[1]);
       if (!removed) return sendJSON(res, 404, { error: 'Folder not found.' });
-      return sendJSON(res, 200, { ok: true });
-    }
-
-    const singleMatch = pathname.match(/^\/api\/letters\/([\w-]+)$/);
-    if (singleMatch && req.method === 'GET') {
-      const letter = getLetter(singleMatch[1]);
-      if (!letter) return sendJSON(res, 404, { error: 'Letter not found.' });
-      return sendJSON(res, 200, letter);
-    }
-
-    if (singleMatch && req.method === 'DELETE') {
-      const removed = deleteLetter(singleMatch[1]);
-      if (!removed) return sendJSON(res, 404, { error: 'Letter not found.' });
-      await deletePhotoFile(removed.photo);
       return sendJSON(res, 200, { ok: true });
     }
 

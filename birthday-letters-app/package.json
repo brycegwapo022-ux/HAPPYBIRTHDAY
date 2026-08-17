@@ -1,14 +1,17 @@
 {
   "name": "birthday-letters-app",
-  "version": "1.0.0",
-  "description": "A love-themed birthday letters folder with a real SQLite backend.",
+  "version": "2.0.0",
+  "description": "A love-themed birthday letters folder with a permanent, free cloud database (Turso).",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
+  "dependencies": {
+    "@libsql/client": "^0.17.4"
+  },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=20.0.0"
   }
 }

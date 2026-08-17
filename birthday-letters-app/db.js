@@ -1,21 +1,37 @@
 // db.js — database layer
-// Uses Node's built-in SQLite driver (node:sqlite), so there is nothing to
-// npm install. The database lives in a real .db file on disk, not in memory,
-// so your letters survive server restarts.
+//
+// Uses Turso (a free, permanent cloud database built on SQLite) via
+// @libsql/client, so your letters and photos survive forever — even
+// when your Render server restarts, sleeps, or redeploys.
+//
+// If you haven't set up Turso yet (e.g. you're just testing locally),
+// this automatically falls back to a local file at data/letters.db so
+// you can still run `npm start` with zero setup. Only your LIVE site
+// needs the real Turso credentials — see README.md.
 
-import { DatabaseSync } from 'node:sqlite';
+import { createClient } from '@libsql/client';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, 'data');
-mkdirSync(DATA_DIR, { recursive: true });
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'letters.db'));
+let clientConfig;
+if (process.env.TURSO_DATABASE_URL) {
+  clientConfig = {
+    url: process.env.TURSO_DATABASE_URL,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  };
+} else {
+  const DATA_DIR = path.join(__dirname, 'data');
+  mkdirSync(DATA_DIR, { recursive: true });
+  clientConfig = { url: 'file:' + path.join(DATA_DIR, 'letters.db') };
+}
+
+const db = createClient(clientConfig);
 
 // ---- schema ----
-db.exec(`
+await db.execute(`
   CREATE TABLE IF NOT EXISTS letters (
     id          TEXT PRIMARY KEY,
     title       TEXT NOT NULL,
@@ -27,7 +43,7 @@ db.exec(`
   )
 `);
 
-db.exec(`
+await db.execute(`
   CREATE TABLE IF NOT EXISTS folders (
     id          TEXT PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -37,41 +53,11 @@ db.exec(`
 `);
 
 // ---- migration: add folder_id to letters if it doesn't exist yet ----
-// (needed so a website you already deployed before this feature existed
-// doesn't break — it just gets the new column added on next startup.)
-const letterColumns = db.prepare(`PRAGMA table_info(letters)`).all();
-const hasFolderId = letterColumns.some((c) => c.name === 'folder_id');
+const letterColumns = await db.execute(`PRAGMA table_info(letters)`);
+const hasFolderId = letterColumns.rows.some((c) => c.name === 'folder_id');
 if (!hasFolderId) {
-  db.exec(`ALTER TABLE letters ADD COLUMN folder_id TEXT`);
+  await db.execute(`ALTER TABLE letters ADD COLUMN folder_id TEXT`);
 }
-
-// ---- prepared statements: letters ----
-const stmts = {
-  insert: db.prepare(`
-    INSERT INTO letters (id, title, from_name, letter_date, message, photo_path, folder_id, created_at)
-    VALUES (@id, @title, @from_name, @letter_date, @message, @photo_path, @folder_id, @created_at)
-  `),
-  allLetters: db.prepare(`SELECT * FROM letters ORDER BY created_at DESC`),
-  byFolder: db.prepare(`SELECT * FROM letters WHERE folder_id = ? ORDER BY created_at DESC`),
-  loose: db.prepare(`SELECT * FROM letters WHERE folder_id IS NULL ORDER BY created_at DESC`),
-  one: db.prepare(`SELECT * FROM letters WHERE id = ?`),
-  remove: db.prepare(`DELETE FROM letters WHERE id = ?`),
-};
-
-// ---- prepared statements: folders ----
-const folderStmts = {
-  insert: db.prepare(`INSERT INTO folders (id, name, color, created_at) VALUES (@id, @name, @color, @created_at)`),
-  all: db.prepare(`
-    SELECT folders.*, COUNT(letters.id) AS letter_count
-    FROM folders
-    LEFT JOIN letters ON letters.folder_id = folders.id
-    GROUP BY folders.id
-    ORDER BY folders.created_at ASC
-  `),
-  one: db.prepare(`SELECT * FROM folders WHERE id = ?`),
-  remove: db.prepare(`DELETE FROM folders WHERE id = ?`),
-  unassignLetters: db.prepare(`UPDATE letters SET folder_id = NULL WHERE folder_id = ?`),
-};
 
 function rowToLetter(row) {
   if (!row) return null;
@@ -83,7 +69,7 @@ function rowToLetter(row) {
     message: row.message,
     photo: row.photo_path || null,
     folderId: row.folder_id || null,
-    createdAt: row.created_at,
+    createdAt: Number(row.created_at),
   };
 }
 
@@ -93,66 +79,82 @@ function rowToFolder(row) {
     id: row.id,
     name: row.name,
     color: row.color || null,
-    letterCount: row.letter_count ?? undefined,
-    createdAt: row.created_at,
+    letterCount: row.letter_count !== undefined ? Number(row.letter_count) : undefined,
+    createdAt: Number(row.created_at),
   };
 }
 
 // ---------- letters ----------
 
-// folderFilter: undefined/'' -> all letters, 'none' -> only letters with no folder,
+// folderFilter: undefined/'' -> all letters, 'none' -> only unfiled letters,
 // any other string -> only letters in that folder id
-export function listLetters(folderFilter) {
-  if (folderFilter === 'none') return stmts.loose.all().map(rowToLetter);
-  if (folderFilter) return stmts.byFolder.all(folderFilter).map(rowToLetter);
-  return stmts.allLetters.all().map(rowToLetter);
+export async function listLetters(folderFilter) {
+  let result;
+  if (folderFilter === 'none') {
+    result = await db.execute(`SELECT * FROM letters WHERE folder_id IS NULL ORDER BY created_at DESC`);
+  } else if (folderFilter) {
+    result = await db.execute({
+      sql: `SELECT * FROM letters WHERE folder_id = ? ORDER BY created_at DESC`,
+      args: [folderFilter],
+    });
+  } else {
+    result = await db.execute(`SELECT * FROM letters ORDER BY created_at DESC`);
+  }
+  return result.rows.map(rowToLetter);
 }
 
-export function getLetter(id) {
-  return rowToLetter(stmts.one.get(id));
+export async function getLetter(id) {
+  const result = await db.execute({ sql: `SELECT * FROM letters WHERE id = ?`, args: [id] });
+  return rowToLetter(result.rows[0]);
 }
 
-export function insertLetter({ id, title, from, date, message, photoPath, folderId, createdAt }) {
-  stmts.insert.run({
-    id,
-    title,
-    from_name: from || '',
-    letter_date: date || '',
-    message,
-    photo_path: photoPath || null,
-    folder_id: folderId || null,
-    created_at: createdAt,
+export async function insertLetter({ id, title, from, date, message, photo, folderId, createdAt }) {
+  await db.execute({
+    sql: `INSERT INTO letters (id, title, from_name, letter_date, message, photo_path, folder_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [id, title, from || '', date || '', message, photo || null, folderId || null, createdAt],
   });
   return getLetter(id);
 }
 
-export function deleteLetter(id) {
-  const existing = getLetter(id);
-  stmts.remove.run(id);
+export async function deleteLetter(id) {
+  const existing = await getLetter(id);
+  await db.execute({ sql: `DELETE FROM letters WHERE id = ?`, args: [id] });
   return existing;
 }
 
 // ---------- folders ----------
 
-export function listFolders() {
-  return folderStmts.all.all().map(rowToFolder);
+export async function listFolders() {
+  const result = await db.execute(`
+    SELECT folders.*, COUNT(letters.id) AS letter_count
+    FROM folders
+    LEFT JOIN letters ON letters.folder_id = folders.id
+    GROUP BY folders.id
+    ORDER BY folders.created_at ASC
+  `);
+  return result.rows.map(rowToFolder);
 }
 
-export function getFolder(id) {
-  return rowToFolder(folderStmts.one.get(id));
+export async function getFolder(id) {
+  const result = await db.execute({ sql: `SELECT * FROM folders WHERE id = ?`, args: [id] });
+  return rowToFolder(result.rows[0]);
 }
 
-export function insertFolder({ id, name, color, createdAt }) {
-  folderStmts.insert.run({ id, name, color: color || null, created_at: createdAt });
+export async function insertFolder({ id, name, color, createdAt }) {
+  await db.execute({
+    sql: `INSERT INTO folders (id, name, color, created_at) VALUES (?, ?, ?, ?)`,
+    args: [id, name, color || null, createdAt],
+  });
   return getFolder(id);
 }
 
 // Deletes the folder but keeps its letters — they just become "loose"
 // (unfiled) letters instead of being destroyed.
-export function deleteFolder(id) {
-  const existing = getFolder(id);
-  folderStmts.unassignLetters.run(id);
-  folderStmts.remove.run(id);
+export async function deleteFolder(id) {
+  const existing = await getFolder(id);
+  await db.execute({ sql: `UPDATE letters SET folder_id = NULL WHERE folder_id = ?`, args: [id] });
+  await db.execute({ sql: `DELETE FROM folders WHERE id = ?`, args: [id] });
   return existing;
 }
 
