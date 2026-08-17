@@ -17,18 +17,32 @@
     <p class="subtitle">a growing little archive of birthday love, one letter at a time</p>
   </div>
 
+  <div id="folderHeader" class="folder-header" hidden>
+    <button id="backToHomeBtn" type="button" class="back-btn">&larr; All folders</button>
+    <h2 id="folderHeaderTitle"></h2>
+  </div>
+
   <div class="toolbar">
     <button id="newLetterBtn" type="button">+ Write a new letter</button>
+    <button id="newFolderBtn" type="button" class="secondary-btn">+ New folder</button>
     <span id="countLabel"></span>
   </div>
 
   <div id="loadingState">opening the folder…</div>
   <div id="errorState" hidden>couldn't reach the server — is it running?</div>
-  <div id="emptyState" hidden>
-    <span class="big">Your folder is empty</span>
-    it's waiting for its first letter — go on, write one 💌
+
+  <div id="foldersSection">
+    <div id="foldersGrid" class="folders-grid"></div>
   </div>
-  <div id="lettersGrid" class="grid"></div>
+
+  <div id="lettersSection">
+    <p id="looseLabel" class="section-label" hidden>Loose letters — not filed in any folder</p>
+    <div id="emptyState" hidden>
+      <span class="big">Nothing here yet</span>
+      <span id="emptyStateSub">it's waiting for its first letter — go on, write one 💌</span>
+    </div>
+    <div id="lettersGrid" class="grid"></div>
+  </div>
 </div>
 
 <footer class="note">made with 💌 — saved to a real database on the server</footer>
@@ -38,6 +52,12 @@
   <form class="paper-form" id="composeForm">
     <button type="button" class="close-btn" id="closeCompose">&times;</button>
     <h2>Write a new letter</h2>
+
+    <label>Folder
+      <select id="folderSelect">
+        <option value="">No folder (loose letter)</option>
+      </select>
+    </label>
 
     <label>To / Title
       <input type="text" id="titleInput" required placeholder="e.g. Happy Birthday, Mom!">
@@ -68,6 +88,24 @@
       <button type="submit" id="saveBtn">Seal &amp; Save 💌</button>
     </div>
     <p class="error" id="formError" hidden></p>
+  </form>
+</div>
+
+<!-- New folder modal -->
+<div class="overlay" id="folderOverlay" hidden>
+  <form class="paper-form" id="folderForm">
+    <button type="button" class="close-btn" id="closeFolderModal">&times;</button>
+    <h2>Create a new folder</h2>
+    <label>Folder name
+      <input type="text" id="folderNameInput" required placeholder="e.g. Letters for Mom">
+    </label>
+    <label>Color
+      <div id="colorSwatches" class="color-swatches"></div>
+    </label>
+    <div class="form-actions">
+      <button type="submit" id="createFolderBtn">Create folder</button>
+    </div>
+    <p class="error" id="folderFormError" hidden></p>
   </form>
 </div>
 

@@ -9,7 +9,10 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
-import { listLetters, getLetter, insertLetter, deleteLetter } from './db.js';
+import {
+  listLetters, getLetter, insertLetter, deleteLetter,
+  listFolders, insertFolder, deleteFolder, getFolder,
+} from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -94,7 +97,10 @@ const server = createServer(async (req, res) => {
   try {
     // ---------- REST API ----------
     if (pathname === '/api/letters' && req.method === 'GET') {
-      return sendJSON(res, 200, listLetters());
+      // ?folder=none -> only unfiled letters, ?folder=<id> -> only that folder,
+      // no param -> every letter regardless of folder
+      const folderFilter = url.searchParams.get('folder') || undefined;
+      return sendJSON(res, 200, listLetters(folderFilter));
     }
 
     if (pathname === '/api/letters' && req.method === 'POST') {
@@ -103,6 +109,10 @@ const server = createServer(async (req, res) => {
       const message = (body.message || '').trim();
       if (!title || !message) {
         return sendJSON(res, 400, { error: 'Title and message are required.' });
+      }
+      let folderId = body.folderId || null;
+      if (folderId && !getFolder(folderId)) {
+        return sendJSON(res, 400, { error: 'That folder does not exist.' });
       }
       const id = crypto.randomUUID();
       const photoPath = body.photo ? await savePhoto(id, body.photo) : null;
@@ -113,9 +123,35 @@ const server = createServer(async (req, res) => {
         date: body.date || '',
         message,
         photoPath,
+        folderId,
         createdAt: Date.now(),
       });
       return sendJSON(res, 201, letter);
+    }
+
+    // ---------- folders ----------
+    if (pathname === '/api/folders' && req.method === 'GET') {
+      return sendJSON(res, 200, listFolders());
+    }
+
+    if (pathname === '/api/folders' && req.method === 'POST') {
+      const body = await readJSONBody(req);
+      const name = (body.name || '').trim();
+      if (!name) return sendJSON(res, 400, { error: 'Folder name is required.' });
+      const folder = insertFolder({
+        id: crypto.randomUUID(),
+        name,
+        color: body.color || null,
+        createdAt: Date.now(),
+      });
+      return sendJSON(res, 201, folder);
+    }
+
+    const folderMatch = pathname.match(/^\/api\/folders\/([\w-]+)$/);
+    if (folderMatch && req.method === 'DELETE') {
+      const removed = deleteFolder(folderMatch[1]);
+      if (!removed) return sendJSON(res, 404, { error: 'Folder not found.' });
+      return sendJSON(res, 200, { ok: true });
     }
 
     const singleMatch = pathname.match(/^\/api\/letters\/([\w-]+)$/);
