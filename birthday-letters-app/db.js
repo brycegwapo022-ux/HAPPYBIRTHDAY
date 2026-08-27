@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
 let clientConfig;
 if (process.env.TURSO_DATABASE_URL) {
@@ -23,7 +23,7 @@ if (process.env.TURSO_DATABASE_URL) {
     authToken: process.env.TURSO_AUTH_TOKEN,
   };
 } else {
-  const DATA_DIR = path.join(__dirname, 'data');
+  const DATA_DIR = path.join(moduleDir, 'data');
   mkdirSync(DATA_DIR, { recursive: true });
   clientConfig = { url: 'file:' + path.join(DATA_DIR, 'letters.db') };
 }
