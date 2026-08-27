@@ -1,39 +1,39 @@
 // netlify/functions/letters.mjs
-// Handles /api/letters and /api/letters/:id (via the redirect in netlify.toml).
 //
-// This uses the .mjs extension on purpose: it tells Node (and Netlify's
-// bundler) unambiguously "this file is a real ES module," which lets it
-// correctly follow the static import of db.js below, no matter what other
-// settings are in play. That's more reliable than the dynamic-import
-// approach we tried before.
+// This uses Netlify's newer "v2 functions" format (a default export taking
+// a standard Web Request and returning a standard Web Response). It's
+// built for modern JavaScript modules, which sidesteps the CommonJS/ESM
+// mismatch errors we hit with the older function format. The `config.path`
+// export below tells Netlify directly which URLs this function handles —
+// no separate redirect rule needed for this one.
 
 import { listLetters, getLetter, insertLetter, deleteLetter, getFolder } from '../../db.js';
 import crypto from 'node:crypto';
 
-function json(statusCode, data) {
-  return {
-    statusCode,
+function json(status, data) {
+  return new Response(JSON.stringify(data), {
+    status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
-    body: JSON.stringify(data),
-  };
+  });
 }
 
-export const handler = async (event) => {
-  const { httpMethod, path, queryStringParameters, body } = event;
-  const afterFn = path.replace(/^.*\/letters/, ''); // '' or '/<id>'
+export default async (request) => {
+  const url = new URL(request.url);
+  const afterFn = url.pathname.replace(/^\/api\/letters/, ''); // '' or '/<id>'
+  const method = request.method;
 
   let parsedBody = {};
-  if (body) {
-    try { parsedBody = JSON.parse(body); } catch { parsedBody = {}; }
+  if (method === 'POST') {
+    try { parsedBody = await request.json(); } catch { parsedBody = {}; }
   }
 
   try {
-    if (afterFn === '' && httpMethod === 'GET') {
-      const folderFilter = (queryStringParameters && queryStringParameters.folder) || undefined;
+    if (afterFn === '' && method === 'GET') {
+      const folderFilter = url.searchParams.get('folder') || undefined;
       return json(200, await listLetters(folderFilter));
     }
 
-    if (afterFn === '' && httpMethod === 'POST') {
+    if (afterFn === '' && method === 'POST') {
       const title = (parsedBody.title || '').trim();
       const message = (parsedBody.message || '').trim();
       if (!title || !message) {
@@ -58,13 +58,13 @@ export const handler = async (event) => {
 
     const idMatch = afterFn.match(/^\/([\w-]+)$/);
 
-    if (idMatch && httpMethod === 'GET') {
+    if (idMatch && method === 'GET') {
       const letter = await getLetter(idMatch[1]);
       if (!letter) return json(404, { error: 'Letter not found.' });
       return json(200, letter);
     }
 
-    if (idMatch && httpMethod === 'DELETE') {
+    if (idMatch && method === 'DELETE') {
       const removed = await deleteLetter(idMatch[1]);
       if (!removed) return json(404, { error: 'Letter not found.' });
       return json(200, { ok: true });
@@ -76,3 +76,5 @@ export const handler = async (event) => {
     return json(500, { error: 'Something went wrong on the server.' });
   }
 };
+
+export const config = { path: ['/api/letters', '/api/letters/*'] };

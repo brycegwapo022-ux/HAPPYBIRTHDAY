@@ -1,8 +1,9 @@
 # netlify.toml
 # Tells Netlify where your project actually lives (birthday-letters-app is
 # a subfolder of your repo), where the frontend files are, and where your
-# serverless functions are — plus a redirect so the frontend can keep
-# calling /api/... exactly like it did on Render.
+# serverless functions are. The functions themselves declare which URLs
+# they handle (via `config.path` in each file), so no separate redirect
+# rule is needed here.
 
 [build]
   base = "birthday-letters-app"
@@ -13,8 +14,3 @@
 [functions]
   node_bundler = "esbuild"
   included_files = ["db.js"]
-
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/:splat"
-  status = 200
