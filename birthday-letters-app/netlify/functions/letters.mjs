@@ -1,13 +1,14 @@
-// netlify/functions/letters.cjs
+// netlify/functions/letters.mjs
 // Handles /api/letters and /api/letters/:id (via the redirect in netlify.toml).
 //
-// This file uses the .cjs extension and CommonJS syntax (require/exports)
-// on purpose: Netlify's function runtime expects that format, even though
-// the rest of this project uses the newer import/export style. It reaches
-// into db.js (which IS written in that newer style) using a dynamic
-// import() — that's a safe, standard way to bridge the two.
+// This uses the .mjs extension on purpose: it tells Node (and Netlify's
+// bundler) unambiguously "this file is a real ES module," which lets it
+// correctly follow the static import of db.js below, no matter what other
+// settings are in play. That's more reliable than the dynamic-import
+// approach we tried before.
 
-const crypto = require('node:crypto');
+import { listLetters, getLetter, insertLetter, deleteLetter, getFolder } from '../../db.js';
+import crypto from 'node:crypto';
 
 function json(statusCode, data) {
   return {
@@ -17,11 +18,8 @@ function json(statusCode, data) {
   };
 }
 
-exports.handler = async (event) => {
-  const { listLetters, getLetter, insertLetter, deleteLetter, getFolder } = await import('../../db.js');
-
+export const handler = async (event) => {
   const { httpMethod, path, queryStringParameters, body } = event;
-  // path is like /.netlify/functions/letters or /.netlify/functions/letters/<id>
   const afterFn = path.replace(/^.*\/letters/, ''); // '' or '/<id>'
 
   let parsedBody = {};

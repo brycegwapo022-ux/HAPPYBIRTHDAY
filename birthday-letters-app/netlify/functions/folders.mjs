@@ -1,8 +1,9 @@
-// netlify/functions/folders.cjs
+// netlify/functions/folders.mjs
 // Handles /api/folders and /api/folders/:id (via the redirect in netlify.toml).
-// See letters.cjs for why this uses .cjs + require/exports instead of import/export.
+// See letters.mjs for why this uses .mjs + static imports.
 
-const crypto = require('node:crypto');
+import { listFolders, insertFolder, deleteFolder } from '../../db.js';
+import crypto from 'node:crypto';
 
 function json(statusCode, data) {
   return {
@@ -12,9 +13,7 @@ function json(statusCode, data) {
   };
 }
 
-exports.handler = async (event) => {
-  const { listFolders, insertFolder, deleteFolder } = await import('../../db.js');
-
+export const handler = async (event) => {
   const { httpMethod, path, body } = event;
   const afterFn = path.replace(/^.*\/folders/, ''); // '' or '/<id>'
 

@@ -12,6 +12,7 @@
 
 [functions]
   node_bundler = "esbuild"
+  included_files = ["db.js"]
 
 [[redirects]]
   from = "/api/*"
