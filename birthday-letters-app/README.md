@@ -51,6 +51,36 @@ so the build step can no longer be skipped.)
 Save, and Render will redeploy. From then on, your letters are stored in
 Turso permanently — they'll survive restarts, redeploys, and idle spin-downs.
 
+## Deploying on Netlify (instead of Render)
+
+This project also works on Netlify. Since Netlify can't run a persistent
+server, your backend routes are split into small serverless functions
+(`netlify/functions/letters.js` and `netlify/functions/folders.js`) that each
+talk to your Turso database directly. Your frontend (`public/`) is served
+as plain static files. `server.js` is no longer used in this setup — it's
+kept only so you can still test locally with `npm start` if you want.
+
+1. Go to **[app.netlify.com](https://app.netlify.com)** and sign up (free).
+2. Click **"Add new site" → "Import an existing project"**, choose GitHub,
+   and select your `HAPPYBIRTHDAY` repository.
+3. Netlify should auto-detect the settings from `netlify.toml` (base
+   directory, publish directory, functions directory, build command). If it
+   asks you to confirm them, they should read:
+   - Base directory: `birthday-letters-app`
+   - Build command: `npm install`
+   - Publish directory: `public`
+   - Functions directory: `netlify/functions`
+4. Before deploying, go to **Site settings → Environment variables** and add
+   the same two Turso variables you used on Render:
+   - `TURSO_DATABASE_URL`
+   - `TURSO_AUTH_TOKEN`
+5. Deploy. Your site will be live at a `https://your-site-name.netlify.app`
+   address (or a custom domain if you set one up).
+
+Because your data lives in Turso either way, you can even run this on
+**both** Render and Netlify at the same time, pointed at the same database,
+with no conflicts.
+
 ## Running it locally
 
 You do **not** need a Turso account just to test on your own computer.

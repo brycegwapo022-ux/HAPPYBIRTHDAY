@@ -1,0 +1,19 @@
+# netlify.toml
+# Tells Netlify where your project actually lives (birthday-letters-app is
+# a subfolder of your repo), where the frontend files are, and where your
+# serverless functions are — plus a redirect so the frontend can keep
+# calling /api/... exactly like it did on Render.
+
+[build]
+  base = "birthday-letters-app"
+  publish = "public"
+  functions = "netlify/functions"
+  command = "npm install"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
